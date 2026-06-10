@@ -53,7 +53,16 @@ begin
   end loop;
 end$$;
 
--- 3) Ensure client_id has a FK to public.clients.
+-- 3) Null out orphan client_id values that point at deleted legacy
+-- digital_clients rows — otherwise the FK in step 4 fails validation.
+update public.tasks t
+   set client_id = null
+ where client_id is not null
+   and not exists (
+     select 1 from public.clients c where c.id = t.client_id
+   );
+
+-- 4) Ensure client_id has a FK to public.clients.
 do $$
 begin
   if not exists (
@@ -68,7 +77,15 @@ begin
   end if;
 end$$;
 
--- 4) Drop NOT NULL on legacy columns (only if they exist + are currently NOT NULL).
+-- 4b) Same protection for artist_id, in case any legacy artist values linger.
+update public.tasks t
+   set artist_id = null
+ where artist_id is not null
+   and not exists (
+     select 1 from public.artists a where a.id = t.artist_id
+   );
+
+-- 5) Drop NOT NULL on legacy columns (only if they exist + are currently NOT NULL).
 do $$
 declare
   col_name text;
