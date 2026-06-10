@@ -1,25 +1,35 @@
 import type { Metadata } from "next";
-import { Syne, IBM_Plex_Mono } from "next/font/google";
-import { AppShell } from "@/components/AppShell";
+import { Bebas_Neue, Instrument_Serif, Inter } from "next/font/google";
+import { AppProvider } from "@/components/AppProvider";
+import { TopNav } from "@/components/TopNav";
+import { Toaster } from "@/components/Toaster";
 import "./globals.css";
 
-const syne = Syne({
+const bebas = Bebas_Neue({
   subsets: ["latin"],
-  weight: ["400", "600", "700", "800"],
-  variable: "--font-syne",
+  weight: ["400"],
+  variable: "--font-bebas",
   display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+const instrument = Instrument_Serif({
   subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-plex-mono",
+  weight: ["400"],
+  style: ["normal", "italic"],
+  variable: "--font-instrument",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-inter",
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "Triptych OS",
-  description: "Internal operations and task tracker for Triptych Management.",
+  description: "Internal operations tracker for Triptych Management.",
 };
 
 export const viewport = {
@@ -34,9 +44,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${syne.variable} ${plexMono.variable}`}>
-      <body className="bg-bg text-[color:var(--text-primary)] min-h-screen">
-        <AppShell>{children}</AppShell>
+    <html
+      lang="en"
+      className={`${bebas.variable} ${instrument.variable} ${inter.variable}`}
+    >
+      <body>
+        <AppProvider>
+          <TopNav />
+          <main className="tri-main">{children}</main>
+          <Toaster />
+        </AppProvider>
       </body>
     </html>
   );

@@ -1,64 +1,85 @@
-// Tiny wrapper around fetch for the in-app API. Used by client-side code
-// (useScopedTasks + page-level handlers) instead of talking to Supabase
-// directly.
-//
-// The browser no longer holds the anon key; every CRUD goes via Next.js
-// routes that use the service_role key server-side.
+import type { Task, User } from "./types";
 
-export class ApiError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
-async function request<T>(
-  url: string,
-  init: RequestInit & { json?: unknown } = {}
-): Promise<T> {
-  const { json, headers, ...rest } = init;
-  const res = await fetch(url, {
-    ...rest,
-    headers: {
-      ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(headers || {}),
-    },
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
+async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.error) msg = body.error;
-    } catch {
-      /* keep statusText */
-    }
-    throw new ApiError(res.status, msg);
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `${res.status} ${res.statusText}`);
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  return res.json() as Promise<T>;
 }
 
-export const api = {
-  get: <T>(url: string) => request<T>(url),
-  post: <T>(url: string, json?: unknown) =>
-    request<T>(url, { method: "POST", json }),
-  patch: <T>(url: string, json?: unknown) =>
-    request<T>(url, { method: "PATCH", json }),
-  del: <T>(url: string) => request<T>(url, { method: "DELETE" }),
-};
+// ----- Users ---------------------------------------------------------------
 
-// Fire-and-forget DELETE that survives page unload. Used by the
-// soft-delete-with-undo path: when a tab is closing and we still hold
-// pending deletes from the 4-second undo window, we commit them right now.
-export function syncDeleteTaskOnUnload(id: string): void {
-  try {
-    fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      keepalive: true,
-    });
-  } catch {
-    // Best-effort. The user is already navigating away.
-  }
+export async function fetchUsers(): Promise<User[]> {
+  return asJson<User[]>(await fetch("/api/users", { cache: "no-store" }));
+}
+
+export async function createUser(input: {
+  name: string;
+  initial: string;
+  color?: string;
+  is_admin?: boolean;
+}): Promise<User> {
+  return asJson<User>(
+    await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function updateUser(
+  id: string,
+  patch: Partial<Pick<User, "name" | "initial" | "color" | "is_admin">>
+): Promise<User> {
+  return asJson<User>(
+    await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+  );
+}
+
+export async function archiveUser(id: string): Promise<void> {
+  const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+// ----- Tasks ---------------------------------------------------------------
+
+export async function fetchTasks(): Promise<Task[]> {
+  return asJson<Task[]>(await fetch("/api/tasks", { cache: "no-store" }));
+}
+
+export async function createTask(input: {
+  title: string;
+  owner_id: string | null;
+}): Promise<Task> {
+  return asJson<Task>(
+    await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function patchTask(
+  id: string,
+  patch: Partial<Pick<Task, "title" | "status" | "owner_id">>
+): Promise<Task> {
+  return asJson<Task>(
+    await fetch(`/api/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+  );
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
 }

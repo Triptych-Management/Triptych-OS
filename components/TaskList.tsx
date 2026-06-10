@@ -1,344 +1,115 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { TAGS, tagStyle } from "@/lib/constants";
-import type { ContextTag, Task, TeamMember } from "@/lib/types";
+import { useTasks } from "@/lib/useTasks";
+import { useApp } from "./AppProvider";
+import { TaskInput } from "./TaskInput";
 import { TaskRow } from "./TaskRow";
 
-type OwnerFilter = "all" | "mine";
-type ContextFilter = "all" | ContextTag;
-type Tab = "active" | "closed";
+type Filter = "all" | "mine" | "done";
 
-interface Props {
-  tasks: Task[];
-  currentUser: TeamMember;
-  pinnedTaskIds: Set<string>;
-  prioritiesFull: boolean;
-  recentlyDeletingIds: Set<string>;
-  onToggleDone: (id: string, nextDone: boolean) => Promise<void>;
-  onUpdateTitle: (id: string, title: string) => Promise<void>;
-  onUpdateOwner: (id: string, owner: TeamMember) => Promise<void>;
-  onUpdateContext: (id: string, context: ContextTag) => Promise<void>;
-  onDelete: (id: string) => void;
-  onTogglePin: (id: string, isCurrentlyPinned: boolean) => void;
+export function TaskList() {
+  const { users, currentUser } = useApp();
+  const { tasks, loading, add, toggle, updateTitle, updateOwner, remove } =
+    useTasks();
+  const [filter, setFilter] = useState<Filter>("all");
+
+  const userById = useMemo(() => {
+    const m = new Map<string, (typeof users)[number]>();
+    for (const u of users) m.set(u.id, u);
+    return m;
+  }, [users]);
+
+  const visible = tasks.filter((t) => {
+    if (filter === "mine") return t.owner_id === currentUser?.id && t.status !== "Done";
+    if (filter === "done") return t.status === "Done";
+    return t.status !== "Done";
+  });
+
+  const counts = {
+    all: tasks.filter((t) => t.status !== "Done").length,
+    mine: tasks.filter(
+      (t) => t.status !== "Done" && t.owner_id === currentUser?.id
+    ).length,
+    done: tasks.filter((t) => t.status === "Done").length,
+  };
+
+  return (
+    <div className="tri-tasklist">
+      <TaskInput onAdd={add} />
+
+      <div className="tri-filterbar" role="tablist" aria-label="Task filter">
+        <FilterTab
+          label="Active"
+          count={counts.all}
+          active={filter === "all"}
+          onClick={() => setFilter("all")}
+        />
+        <FilterTab
+          label="Mine"
+          count={counts.mine}
+          active={filter === "mine"}
+          onClick={() => setFilter("mine")}
+        />
+        <FilterTab
+          label="Done"
+          count={counts.done}
+          active={filter === "done"}
+          onClick={() => setFilter("done")}
+        />
+      </div>
+
+      {loading ? (
+        <div className="tri-empty">Loading…</div>
+      ) : visible.length === 0 ? (
+        <div className="tri-empty">
+          {filter === "mine"
+            ? "Nothing assigned to you."
+            : filter === "done"
+              ? "No completed tasks yet."
+              : "No active tasks. Add one above."}
+        </div>
+      ) : (
+        <ul className="tri-task-list">
+          {visible.map((t) => (
+            <TaskRow
+              key={t.id}
+              task={t}
+              owner={t.owner_id ? userById.get(t.owner_id) ?? null : null}
+              users={users}
+              onToggle={() => toggle(t.id)}
+              onUpdateTitle={(title) => updateTitle(t.id, title)}
+              onUpdateOwner={(owner_id) => updateOwner(t.id, owner_id)}
+              onDelete={() => remove(t.id)}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "active", label: "Active" },
-  { id: "closed", label: "Closed" },
-];
-
-function FilterPill({
+function FilterTab({
+  label,
+  count,
   active,
   onClick,
-  children,
 }: {
+  label: string;
+  count: number;
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
 }) {
   return (
     <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      className={`tri-filter${active ? " is-active" : ""}`}
       onClick={onClick}
-      className="tap-target"
-      style={{
-        background: active ? "var(--surface-hover)" : "transparent",
-        border: `1px solid ${active ? "var(--border-strong)" : "transparent"}`,
-        color: active ? "var(--text-primary)" : "var(--text-muted)",
-        padding: "6px 12px",
-        borderRadius: 2,
-        cursor: "pointer",
-        fontSize: 10,
-        fontFamily: "'Syne', sans-serif",
-        fontWeight: 700,
-        letterSpacing: "0.1em",
-        textTransform: "uppercase",
-        transition: "all 0.12s",
-      }}
     >
-      {children}
+      <span className="tri-filter-label">{label}</span>
+      <span className="tri-filter-count">{count}</span>
     </button>
-  );
-}
-
-function ContextFilterSelect({
-  value,
-  onChange,
-  className,
-}: {
-  value: ContextFilter;
-  onChange: (next: ContextFilter) => void;
-  className?: string;
-}) {
-  const isAll = value === "all";
-  const style = isAll
-    ? { color: "var(--text-muted)", bg: "transparent" }
-    : tagStyle(value as ContextTag);
-
-  return (
-    <label
-      title="Filter by context tag"
-      className={className}
-      style={{
-        position: "relative",
-        display: "inline-flex",
-        alignItems: "center",
-        cursor: "pointer",
-        minHeight: 32,
-      }}
-    >
-      <span
-        style={{
-          fontSize: 10,
-          fontFamily: "'Syne', sans-serif",
-          fontWeight: 700,
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-          color: style.color,
-          background: isAll ? "transparent" : (style as { bg: string }).bg,
-          border: `1px solid ${isAll ? "transparent" : "var(--border-strong)"}`,
-          padding: "5px 11px",
-          borderRadius: 2,
-          whiteSpace: "nowrap",
-          pointerEvents: "none",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {isAll ? "All Contexts" : value}
-        <span style={{ fontSize: 8, opacity: 0.7 }}>▾</span>
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as ContextFilter)}
-        style={{
-          position: "absolute",
-          inset: 0,
-          opacity: 0,
-          cursor: "pointer",
-          border: "none",
-          background: "transparent",
-        }}
-      >
-        <option value="all">All Contexts</option>
-        {TAGS.map((t) => (
-          <option key={t} value={t}>
-            {t}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-export function TaskList({
-  tasks,
-  currentUser,
-  pinnedTaskIds,
-  prioritiesFull,
-  recentlyDeletingIds,
-  onToggleDone,
-  onUpdateTitle,
-  onUpdateOwner,
-  onUpdateContext,
-  onDelete,
-  onTogglePin,
-}: Props) {
-  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>("all");
-  const [contextFilter, setContextFilter] = useState<ContextFilter>("all");
-  const [tab, setTab] = useState<Tab>("active");
-
-  const scoped = useMemo(() => {
-    return tasks.filter((t) => {
-      if (ownerFilter === "mine" && t.owner !== currentUser) return false;
-      if (contextFilter !== "all" && t.context !== contextFilter) return false;
-      return true;
-    });
-  }, [tasks, ownerFilter, contextFilter, currentUser]);
-
-  const activeTasks = useMemo(
-    () => scoped.filter((t) => t.status !== "Done"),
-    [scoped]
-  );
-  const closedTasks = useMemo(
-    () => scoped.filter((t) => t.status === "Done"),
-    [scoped]
-  );
-
-  const visible = tab === "active" ? activeTasks : closedTasks;
-  const openCount = useMemo(
-    () => tasks.filter((t) => t.status !== "Done").length,
-    [tasks]
-  );
-
-  return (
-    <div className="container-responsive" style={{ paddingBottom: 64 }}>
-      <div className="task-list-card">
-      {/* Row 1 (desktop + mobile): counts (+ ctx on desktop) ··· All/Mine */}
-      <div
-        className="filter-row-1"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "14px 0 8px",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <span
-            className="open-counter"
-            style={{
-              fontSize: "1.125rem", // 18px desktop
-              color: "var(--text-muted)",
-              letterSpacing: "0.08em",
-              fontFamily: "'Syne', sans-serif",
-              display: "inline-flex",
-              alignItems: "baseline",
-              gap: 6,
-            }}
-          >
-            <span
-              style={{
-                color: "var(--task-title)",
-                fontWeight: 600,
-                fontSize: "1.125rem",
-              }}
-            >
-              {openCount}
-            </span>
-            <span style={{ fontSize: "0.8125rem", fontWeight: 400 }}>OPEN</span>
-          </span>
-        </div>
-
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <ContextFilterSelect
-            className="filter-ctx-desktop"
-            value={contextFilter}
-            onChange={setContextFilter}
-          />
-          <div
-            className="filter-ctx-divider"
-            style={{ width: 1, height: 14, background: "var(--border)" }}
-          />
-          <FilterPill
-            active={ownerFilter === "all"}
-            onClick={() => setOwnerFilter("all")}
-          >
-            All
-          </FilterPill>
-          <FilterPill
-            active={ownerFilter === "mine"}
-            onClick={() => setOwnerFilter("mine")}
-          >
-            Mine
-          </FilterPill>
-        </div>
-      </div>
-
-      {/* Row 2: tabs (+ ctx on mobile) */}
-      <div
-        className="filter-tabs-row"
-        style={{
-          display: "flex",
-          borderBottom: "1px solid var(--row-divider)",
-          marginBottom: 2,
-          justifyContent: "space-between",
-          alignItems: "flex-end",
-        }}
-      >
-        <div style={{ display: "flex" }}>
-          {TABS.map((t) => {
-            const active = tab === t.id;
-            const count =
-              t.id === "active" ? activeTasks.length : closedTasks.length;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className="tap-target"
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: active ? "var(--text-primary)" : "var(--text-muted)",
-                  padding: "10px 14px 9px",
-                  fontSize: "0.8125rem", // 13px
-                  fontFamily: "'Syne', sans-serif",
-                  fontWeight: 500,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                  borderBottom: `1.5px solid ${active ? "var(--accent-blue)" : "transparent"}`,
-                  marginBottom: -1,
-                  transition: "all 0.12s",
-                  display: "inline-flex",
-                  alignItems: "baseline",
-                  gap: 6,
-                }}
-              >
-                {t.label}
-                <span
-                  style={{
-                    fontSize: "0.6875rem",
-                    fontWeight: 400,
-                    opacity: 0.6,
-                  }}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ padding: "0 0 4px" }}>
-          <ContextFilterSelect
-            className="filter-ctx-mobile"
-            value={contextFilter}
-            onChange={setContextFilter}
-          />
-        </div>
-      </div>
-
-      <div style={{ minHeight: 120 }}>
-        {visible.length === 0 ? (
-          <div
-            style={{
-              padding: "52px 0",
-              textAlign: "center",
-              fontSize: 10,
-              color: "var(--text-subtle)",
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-              fontFamily: "'Syne', sans-serif",
-            }}
-          >
-            {tab === "active" ? "no active tasks" : "no closed tasks"}
-          </div>
-        ) : (
-          visible.map((task) => {
-            const isPinned = pinnedTaskIds.has(task.id);
-            return (
-              <TaskRow
-                key={task.id}
-                task={task}
-                isPinned={isPinned}
-                canPin={!prioritiesFull}
-                isDeleting={recentlyDeletingIds.has(task.id)}
-                onToggleDone={onToggleDone}
-                onUpdateTitle={onUpdateTitle}
-                onUpdateOwner={onUpdateOwner}
-                onUpdateContext={onUpdateContext}
-                onDelete={onDelete}
-                onTogglePin={onTogglePin}
-              />
-            );
-          })
-        )}
-      </div>
-      </div>
-    </div>
   );
 }
