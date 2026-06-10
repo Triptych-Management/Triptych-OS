@@ -25,6 +25,16 @@ export function useTasks({ artistId, clientId }: UseTasksOptions = {}) {
   const commitTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const inflight = useRef(0);
 
+  // tasksRef mirrors the latest committed tasks. Mutations read `prev` from
+  // this ref *before* dispatching setTasks — relying on the setState updater
+  // to set a closure variable doesn't work because React queues updaters and
+  // they don't run synchronously. Symptom of the old pattern: PATCH never
+  // fires (task does the optimistic-disappear-then-reappear-on-poll dance).
+  const tasksRef = useRef<Task[]>([]);
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
   const aKey = artistId ?? null;
   const cKey = clientId ?? null;
 
@@ -73,25 +83,22 @@ export function useTasks({ artistId, clientId }: UseTasksOptions = {}) {
   );
 
   const toggle = useCallback(async (id: string) => {
-    let prev: Task | undefined;
-    setTasks((cur) => {
-      const next = cur.map<Task>((t) => {
-        if (t.id !== id) return t;
-        prev = t;
-        const nextStatus: Task["status"] = t.status === "Done" ? "Todo" : "Done";
-        return { ...t, status: nextStatus };
-      });
-      return next;
-    });
+    const prev = tasksRef.current.find((t) => t.id === id);
     if (!prev) return;
-    const nextStatus = prev.status === "Done" ? "Todo" : "Done";
+    const nextStatus: Task["status"] = prev.status === "Done" ? "Todo" : "Done";
+
+    // Optimistic.
+    setTasks((cur) =>
+      cur.map((t) => (t.id === id ? { ...t, status: nextStatus } : t))
+    );
+
     inflight.current++;
     try {
       await patchTask(id, { status: nextStatus });
     } catch (e) {
       toast.error((e as Error).message);
       setTasks((cur) =>
-        cur.map((t) => (t.id === id && prev ? { ...t, status: prev.status } : t))
+        cur.map((t) => (t.id === id ? { ...t, status: prev.status } : t))
       );
     } finally {
       inflight.current--;
@@ -101,107 +108,100 @@ export function useTasks({ artistId, clientId }: UseTasksOptions = {}) {
   const updateTitle = useCallback(async (id: string, title: string) => {
     const trimmed = title.trim();
     if (!trimmed) return;
-    let prevTitle: string | undefined;
+    const prev = tasksRef.current.find((t) => t.id === id);
+    if (!prev) return;
+    if (prev.title === trimmed) return;
+
     setTasks((cur) =>
-      cur.map((t) => {
-        if (t.id !== id) return t;
-        prevTitle = t.title;
-        return { ...t, title: trimmed };
-      })
+      cur.map((t) => (t.id === id ? { ...t, title: trimmed } : t))
     );
+
     inflight.current++;
     try {
       await patchTask(id, { title: trimmed });
     } catch (e) {
       toast.error((e as Error).message);
-      if (prevTitle !== undefined) {
-        setTasks((cur) =>
-          cur.map((t) => (t.id === id ? { ...t, title: prevTitle! } : t))
-        );
-      }
+      setTasks((cur) =>
+        cur.map((t) => (t.id === id ? { ...t, title: prev.title } : t))
+      );
     } finally {
       inflight.current--;
     }
   }, []);
 
   const updateOwner = useCallback(async (id: string, owner_id: string | null) => {
-    let prev: string | null | undefined;
+    const prev = tasksRef.current.find((t) => t.id === id);
+    if (!prev) return;
+    if (prev.owner_id === owner_id) return;
+
     setTasks((cur) =>
-      cur.map((t) => {
-        if (t.id !== id) return t;
-        prev = t.owner_id;
-        return { ...t, owner_id };
-      })
+      cur.map((t) => (t.id === id ? { ...t, owner_id } : t))
     );
+
     inflight.current++;
     try {
       await patchTask(id, { owner_id });
     } catch (e) {
       toast.error((e as Error).message);
-      if (prev !== undefined) {
-        setTasks((cur) =>
-          cur.map((t) => (t.id === id ? { ...t, owner_id: prev as string | null } : t))
-        );
-      }
+      setTasks((cur) =>
+        cur.map((t) => (t.id === id ? { ...t, owner_id: prev.owner_id } : t))
+      );
     } finally {
       inflight.current--;
     }
   }, []);
 
-  const remove = useCallback(
-    (id: string) => {
-      const task = tasks.find((t) => t.id === id);
-      if (!task) return;
+  const remove = useCallback((id: string) => {
+    const task = tasksRef.current.find((t) => t.id === id);
+    if (!task) return;
 
+    setPendingDeletes((prev) => {
+      const next = new Map(prev);
+      next.set(id, task);
+      return next;
+    });
+
+    const undo = () => {
+      const timer = commitTimers.current.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        commitTimers.current.delete(id);
+      }
       setPendingDeletes((prev) => {
         const next = new Map(prev);
-        next.set(id, task);
+        next.delete(id);
         return next;
       });
+    };
 
-      const undo = () => {
-        const timer = commitTimers.current.get(id);
-        if (timer) {
-          clearTimeout(timer);
-          commitTimers.current.delete(id);
-        }
-        setPendingDeletes((prev) => {
-          const next = new Map(prev);
-          next.delete(id);
-          return next;
-        });
-      };
+    const commit = async () => {
+      commitTimers.current.delete(id);
+      inflight.current++;
+      try {
+        await apiDeleteTask(id);
+        setTasks((cur) => cur.filter((t) => t.id !== id));
+      } catch (e) {
+        toast.error((e as Error).message);
+        undo();
+      } finally {
+        inflight.current--;
+      }
+      setPendingDeletes((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    };
 
-      const commit = async () => {
-        commitTimers.current.delete(id);
-        inflight.current++;
-        try {
-          await apiDeleteTask(id);
-          setTasks((cur) => cur.filter((t) => t.id !== id));
-        } catch (e) {
-          toast.error((e as Error).message);
-          undo();
-        } finally {
-          inflight.current--;
-        }
-        setPendingDeletes((prev) => {
-          const next = new Map(prev);
-          next.delete(id);
-          return next;
-        });
-      };
+    const timer = setTimeout(() => void commit(), UNDO_WINDOW_MS);
+    commitTimers.current.set(id, timer);
 
-      const timer = setTimeout(() => void commit(), UNDO_WINDOW_MS);
-      commitTimers.current.set(id, timer);
-
-      toast.action(
-        "Task deleted",
-        { label: "Undo", onClick: undo },
-        UNDO_WINDOW_MS
-      );
-    },
-    [tasks]
-  );
+    toast.action(
+      "Task deleted",
+      { label: "Undo", onClick: undo },
+      UNDO_WINDOW_MS
+    );
+  }, []);
 
   const visible = tasks.filter((t) => !pendingDeletes.has(t.id));
 
