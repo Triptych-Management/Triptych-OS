@@ -308,6 +308,53 @@ input::placeholder, textarea::placeholder {
   border: 0;
 }
 
+/* Client profile card — sits above the notes block on /marketing/[slug] */
+.tri-client-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--tri-surface-soft);
+  border: 1px solid var(--tri-border-soft);
+  border-radius: var(--tri-radius);
+  margin-bottom: 20px;
+}
+.tri-profile-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  .tri-profile-row { grid-template-columns: 1fr; }
+}
+.tri-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.tri-profile-field-label {
+  font-family: var(--font-bebas), sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--tri-ink-muted);
+}
+.tri-profile-input {
+  width: 100%;
+  min-width: 0;
+  background: var(--tri-surface);
+  font-size: 13px;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+/* Native date pickers can render an unwanted indicator on hover in some
+   browsers; this keeps things tidy. */
+.tri-profile-input::-webkit-calendar-picker-indicator {
+  opacity: 0.5;
+  cursor: pointer;
+}
+.tri-profile-input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
 /* Notes editor */
 .tri-notes { display: flex; flex-direction: column; gap: 8px; }
 .tri-notes-head {

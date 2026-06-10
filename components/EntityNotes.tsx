@@ -1,59 +1,57 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { updateArtist } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
-import { useApp } from "./AppProvider";
 
 const DEBOUNCE_MS = 1500;
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-export function ArtistNotes({
-  artistId,
-  initial,
-}: {
-  artistId: string;
+interface Props {
+  /** Unique id; component should be `key`-mounted on this to reset cleanly. */
+  entityId: string;
   initial: string;
-}) {
-  const { patchArtistLocal } = useApp();
+  /** Called when the debounced/blur save fires. Should resolve once the value
+   *  is persisted. Throw to surface a "Save failed" status. */
+  onSave: (next: string) => Promise<void>;
+  /** Optional placeholder; defaults to the original artist-notes copy. */
+  placeholder?: string;
+}
+
+// Free-text notes editor with debounced auto-save + save on blur.
+// Status line: Editing… → Saving… → Saved.
+export function EntityNotes({ entityId, initial, onSave, placeholder }: Props) {
   const [value, setValue] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [state, setState] = useState<SaveState>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedRef = useRef(initial);
 
-  // Reset when navigating to a different artist. The setState calls are
-  // syncing local draft with the externally-supplied initial — the effect's
-  // purpose. The component is also keyed on artistId by its parent so this
-  // mostly fires on real artist changes, not on every parent re-render.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setValue(initial);
     setSaved(initial);
     savedRef.current = initial;
     setState("idle");
-  }, [artistId, initial]);
+  }, [entityId, initial]);
 
   const persist = useCallback(
     async (next: string) => {
       if (next === savedRef.current) return;
       setState("saving");
       try {
-        await updateArtist(artistId, { notes: next });
+        await onSave(next);
         savedRef.current = next;
         setSaved(next);
         setState("saved");
-        patchArtistLocal(artistId, { notes: next });
       } catch (e) {
         setState("error");
         toast.error("Notes failed to save: " + (e as Error).message);
       }
     },
-    [artistId, patchArtistLocal]
+    [onSave]
   );
 
-  // Debounced auto-save while typing.
   useEffect(() => {
     if (value === saved) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -98,7 +96,9 @@ export function ArtistNotes({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={onBlur}
-        placeholder="Ideas, priorities, next steps, random thoughts…"
+        placeholder={
+          placeholder ?? "Ideas, priorities, next steps, random thoughts…"
+        }
         spellCheck
       />
     </div>

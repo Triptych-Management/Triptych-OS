@@ -1,4 +1,4 @@
-import type { Artist, Task, User } from "./types";
+import type { Artist, Client, Task, User } from "./types";
 
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -84,14 +84,70 @@ export async function archiveArtist(id: string): Promise<void> {
   if (!res.ok) throw new Error(await res.text());
 }
 
+// ----- Clients -------------------------------------------------------------
+
+export async function fetchClients(): Promise<Client[]> {
+  return asJson<Client[]>(await fetch("/api/clients", { cache: "no-store" }));
+}
+
+export async function createClient(input: {
+  name: string;
+  slug?: string;
+}): Promise<Client> {
+  return asJson<Client>(
+    await fetch("/api/clients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function updateClient(
+  id: string,
+  patch: Partial<
+    Pick<
+      Client,
+      | "name"
+      | "slug"
+      | "position"
+      | "notes"
+      | "account_manager_id"
+      | "campaign_start_date"
+      | "campaign_end_date"
+      | "posts_per_invoice_period"
+      | "last_invoice_date"
+      | "archived_at"
+    >
+  >
+): Promise<Client> {
+  return asJson<Client>(
+    await fetch(`/api/clients/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+  );
+}
+
+export async function archiveClient(id: string): Promise<void> {
+  const res = await fetch(`/api/clients/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 // ----- Tasks ---------------------------------------------------------------
 
-/** Fetch tasks. Pass null/undefined for internal (artist_id IS NULL),
- *  or a uuid string for tasks scoped to that artist. */
-export async function fetchTasks(artistId?: string | null): Promise<Task[]> {
-  const url = artistId
-    ? `/api/tasks?artist_id=${encodeURIComponent(artistId)}`
-    : "/api/tasks";
+/** Fetch tasks. Pass an artistId or clientId for scoped fetches, or omit
+ *  both for internal tasks. artistId and clientId are mutually exclusive. */
+export async function fetchTasks(
+  scope: { artistId?: string | null; clientId?: string | null } = {}
+): Promise<Task[]> {
+  let url = "/api/tasks";
+  if (scope.clientId) {
+    url = `/api/tasks?client_id=${encodeURIComponent(scope.clientId)}`;
+  } else if (scope.artistId) {
+    url = `/api/tasks?artist_id=${encodeURIComponent(scope.artistId)}`;
+  }
   return asJson<Task[]>(await fetch(url, { cache: "no-store" }));
 }
 
@@ -99,6 +155,7 @@ export async function createTask(input: {
   title: string;
   owner_id: string | null;
   artist_id?: string | null;
+  client_id?: string | null;
 }): Promise<Task> {
   return asJson<Task>(
     await fetch("/api/tasks", {

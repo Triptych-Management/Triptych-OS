@@ -24,11 +24,27 @@ export interface Artist {
   archived_at: string | null;
 }
 
+export interface Client {
+  id: string;
+  name: string;
+  slug: string;
+  position: number;
+  notes: string;
+  account_manager_id: string | null;
+  campaign_start_date: string | null;
+  campaign_end_date: string | null;
+  posts_per_invoice_period: number | null;
+  last_invoice_date: string | null;
+  created_at: string;
+  archived_at: string | null;
+}
+
 export interface Task {
   id: string;
   title: string;
   owner_id: string | null;
   artist_id: string | null;
+  client_id: string | null;
   status: Status;
   created_at: string;
   updated_at?: string | null;

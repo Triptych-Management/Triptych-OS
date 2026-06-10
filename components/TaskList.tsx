@@ -9,14 +9,15 @@ import { TaskRow } from "./TaskRow";
 type Filter = "all" | "mine" | "done";
 
 interface Props {
-  /** undefined/null = internal tasks. A string uuid = artist-scoped tasks. */
+  /** Scope filters; mutually exclusive. Both null/undefined = internal. */
   artistId?: string | null;
+  clientId?: string | null;
 }
 
-export function TaskList({ artistId }: Props = {}) {
+export function TaskList({ artistId, clientId }: Props = {}) {
   const { users, currentUser } = useApp();
   const { tasks, loading, add, toggle, updateTitle, updateOwner, remove } =
-    useTasks({ artistId });
+    useTasks({ artistId, clientId });
   const [filter, setFilter] = useState<Filter>("all");
 
   const userById = useMemo(() => {

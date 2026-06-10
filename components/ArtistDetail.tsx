@@ -1,10 +1,14 @@
 "use client";
 
-import { ArtistNotes } from "./ArtistNotes";
-import { TaskList } from "./TaskList";
+import { updateArtist } from "@/lib/api-client";
 import type { Artist } from "@/lib/types";
+import { useApp } from "./AppProvider";
+import { EntityNotes } from "./EntityNotes";
+import { TaskList } from "./TaskList";
 
 export function ArtistDetail({ artist }: { artist: Artist }) {
+  const { patchArtistLocal } = useApp();
+
   return (
     <article className="tri-artist-detail">
       <header className="tri-artist-detail-head">
@@ -21,11 +25,14 @@ export function ArtistDetail({ artist }: { artist: Artist }) {
           <h2 id="notes-h" className="tri-section-label tri-sr-only">
             Notes
           </h2>
-          {/* `key` forces remount on artist switch — clean initial value. */}
-          <ArtistNotes
+          <EntityNotes
             key={artist.id}
-            artistId={artist.id}
+            entityId={artist.id}
             initial={artist.notes ?? ""}
+            onSave={async (next) => {
+              await updateArtist(artist.id, { notes: next });
+              patchArtistLocal(artist.id, { notes: next });
+            }}
           />
         </section>
       </div>

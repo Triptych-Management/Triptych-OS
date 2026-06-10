@@ -8,11 +8,16 @@ import {
   useMemo,
   useState,
 } from "react";
-import { fetchArtists, fetchUsers } from "@/lib/api-client";
+import {
+  fetchArtists,
+  fetchClients,
+  fetchUsers,
+} from "@/lib/api-client";
 import { readUserCookie, writeUserCookie } from "@/lib/cookies";
 import { toast } from "@/lib/toast";
-import type { Artist, User } from "@/lib/types";
+import type { Artist, Client, User } from "@/lib/types";
 import { ArtistManager } from "./ArtistManager";
+import { ClientManager } from "./ClientManager";
 import { UserManager } from "./UserManager";
 
 interface AppCtx {
@@ -23,15 +28,14 @@ interface AppCtx {
 
   artists: Artist[];
   reloadArtists: () => Promise<void>;
-  /** Optimistically replace one artist in the cached list. Used by the
-   *  notes editor so it doesn't have to round-trip a full re-fetch. */
   patchArtistLocal: (id: string, patch: Partial<Artist>) => void;
+
+  clients: Client[];
+  reloadClients: () => Promise<void>;
+  patchClientLocal: (id: string, patch: Partial<Client>) => void;
 
   ready: boolean;
 
-  /** Admin mode toggled via Cmd/Ctrl+Shift+A. Only available when the current
-   *  user has is_admin true. When on, the topnav exposes user-admin controls
-   *  and the management sub-nav exposes artist-admin controls. */
   adminMode: boolean;
   setAdminMode: (v: boolean) => void;
 
@@ -40,6 +44,9 @@ interface AppCtx {
 
   openArtistManager: () => void;
   closeArtistManager: () => void;
+
+  openClientManager: () => void;
+  closeClientManager: () => void;
 }
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -47,11 +54,13 @@ const Ctx = createContext<AppCtx | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
   const [userManagerOpen, setUserManagerOpen] = useState(false);
   const [artistManagerOpen, setArtistManagerOpen] = useState(false);
+  const [clientManagerOpen, setClientManagerOpen] = useState(false);
 
   const reloadUsers = useCallback(async () => {
     try {
@@ -69,6 +78,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const reloadClients = useCallback(async () => {
+    try {
+      setClients(await fetchClients());
+    } catch (e) {
+      console.warn("[AppProvider] fetchClients failed", e);
+    }
+  }, []);
+
   const patchArtistLocal = useCallback(
     (id: string, patch: Partial<Artist>) => {
       setArtists((cur) => cur.map((a) => (a.id === id ? { ...a, ...patch } : a)));
@@ -76,17 +93,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  // First mount: hydrate users + artists + cookie.
+  const patchClientLocal = useCallback(
+    (id: string, patch: Partial<Client>) => {
+      setClients((cur) => cur.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    },
+    []
+  );
+
   useEffect(() => {
     const cookieId = readUserCookie();
     void (async () => {
-      await Promise.all([reloadUsers(), reloadArtists()]);
+      await Promise.all([reloadUsers(), reloadArtists(), reloadClients()]);
       if (cookieId) setCurrentId(cookieId);
       setReady(true);
     })();
-  }, [reloadUsers, reloadArtists]);
+  }, [reloadUsers, reloadArtists, reloadClients]);
 
-  // Clear cookie if it points at an archived user.
   useEffect(() => {
     if (!ready || !currentId) return;
     if (!users.find((u) => u.id === currentId && !u.archived_at)) {
@@ -105,7 +127,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [users, currentId]
   );
 
-  // Auto-exit admin mode if active user loses admin.
   useEffect(() => {
     if (adminMode && !currentUser?.is_admin) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -113,7 +134,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [adminMode, currentUser]);
 
-  // Keyboard shortcut: Cmd/Ctrl + Shift + A toggles admin mode.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const isAdminShortcut =
@@ -134,19 +154,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         e.key === "Escape" &&
         adminMode &&
         !userManagerOpen &&
-        !artistManagerOpen
+        !artistManagerOpen &&
+        !clientManagerOpen
       ) {
         setAdminMode(false);
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [currentUser, adminMode, userManagerOpen, artistManagerOpen]);
+  }, [
+    currentUser,
+    adminMode,
+    userManagerOpen,
+    artistManagerOpen,
+    clientManagerOpen,
+  ]);
 
   const openUserManager = useCallback(() => setUserManagerOpen(true), []);
   const closeUserManager = useCallback(() => setUserManagerOpen(false), []);
   const openArtistManager = useCallback(() => setArtistManagerOpen(true), []);
   const closeArtistManager = useCallback(() => setArtistManagerOpen(false), []);
+  const openClientManager = useCallback(() => setClientManagerOpen(true), []);
+  const closeClientManager = useCallback(() => setClientManagerOpen(false), []);
 
   const value: AppCtx = {
     users,
@@ -156,6 +185,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     artists,
     reloadArtists,
     patchArtistLocal,
+    clients,
+    reloadClients,
+    patchClientLocal,
     ready,
     adminMode,
     setAdminMode,
@@ -163,6 +195,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     closeUserManager,
     openArtistManager,
     closeArtistManager,
+    openClientManager,
+    closeClientManager,
   };
 
   return (
@@ -170,6 +204,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       {children}
       {userManagerOpen && <UserManager onClose={closeUserManager} />}
       {artistManagerOpen && <ArtistManager onClose={closeArtistManager} />}
+      {clientManagerOpen && <ClientManager onClose={closeClientManager} />}
     </Ctx.Provider>
   );
 }

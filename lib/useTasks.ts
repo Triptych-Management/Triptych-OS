@@ -12,39 +12,34 @@ import { toast } from "./toast";
 import type { Task } from "./types";
 
 interface UseTasksOptions {
-  /** undefined or null = internal tasks (artist_id IS NULL).
-   *  A string id = tasks for that artist. */
+  /** Mutually exclusive scope filters. Both null/undefined = internal tasks. */
   artistId?: string | null;
+  clientId?: string | null;
 }
 
-// Single-list task state. Add, toggle, edit, soft-delete-with-undo. Polls
-// every 5s when the tab is visible and no mutation is in flight.
-export function useTasks({ artistId }: UseTasksOptions = {}) {
+export function useTasks({ artistId, clientId }: UseTasksOptions = {}) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Soft-delete bookkeeping — preserves the "undo within 4s" behavior.
   const [pendingDeletes, setPendingDeletes] = useState<Map<string, Task>>(new Map());
   const commitTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const inflight = useRef(0);
 
-  const scopeKey = artistId ?? null;
+  const aKey = artistId ?? null;
+  const cKey = clientId ?? null;
 
   const refetch = useCallback(async () => {
     if (inflight.current > 0) return;
     try {
-      const next = await fetchTasks(scopeKey);
+      const next = await fetchTasks({ artistId: aKey, clientId: cKey });
       setTasks(next);
     } catch (e) {
       console.warn("[useTasks] refetch failed", e);
     } finally {
       setLoading(false);
     }
-  }, [scopeKey]);
+  }, [aKey, cKey]);
 
-  // Initial load + polling. Resets if scope changes. The setState calls here
-  // are the whole purpose of the effect (re-fetch on mount / on poll); the
-  // general lint rule doesn't fit this case.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
@@ -64,7 +59,8 @@ export function useTasks({ artistId }: UseTasksOptions = {}) {
         const created = await createTask({
           title: trimmed,
           owner_id,
-          artist_id: scopeKey,
+          artist_id: aKey,
+          client_id: cKey,
         });
         setTasks((prev) => [created, ...prev]);
       } catch (e) {
@@ -73,7 +69,7 @@ export function useTasks({ artistId }: UseTasksOptions = {}) {
         inflight.current--;
       }
     },
-    [scopeKey]
+    [aKey, cKey]
   );
 
   const toggle = useCallback(async (id: string) => {
