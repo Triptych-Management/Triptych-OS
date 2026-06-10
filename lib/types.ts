@@ -14,10 +14,21 @@ export interface User {
   archived_at: string | null;
 }
 
+export interface Artist {
+  id: string;
+  name: string;
+  slug: string;
+  position: number;
+  notes: string;
+  created_at: string;
+  archived_at: string | null;
+}
+
 export interface Task {
   id: string;
   title: string;
   owner_id: string | null;
+  artist_id: string | null;
   status: Status;
   created_at: string;
   updated_at?: string | null;

@@ -8,10 +8,11 @@ import {
   useMemo,
   useState,
 } from "react";
-import { fetchUsers } from "@/lib/api-client";
+import { fetchArtists, fetchUsers } from "@/lib/api-client";
 import { readUserCookie, writeUserCookie } from "@/lib/cookies";
 import { toast } from "@/lib/toast";
-import type { User } from "@/lib/types";
+import type { Artist, User } from "@/lib/types";
+import { ArtistManager } from "./ArtistManager";
 import { UserManager } from "./UserManager";
 
 interface AppCtx {
@@ -19,46 +20,73 @@ interface AppCtx {
   currentUser: User | null;
   setCurrentUserId: (id: string) => void;
   reloadUsers: () => Promise<void>;
+
+  artists: Artist[];
+  reloadArtists: () => Promise<void>;
+  /** Optimistically replace one artist in the cached list. Used by the
+   *  notes editor so it doesn't have to round-trip a full re-fetch. */
+  patchArtistLocal: (id: string, patch: Partial<Artist>) => void;
+
   ready: boolean;
+
   /** Admin mode toggled via Cmd/Ctrl+Shift+A. Only available when the current
-   *  user has `is_admin` true. When on, TopNav shows a "+ Add user" button. */
+   *  user has is_admin true. When on, the topnav exposes user-admin controls
+   *  and the management sub-nav exposes artist-admin controls. */
   adminMode: boolean;
   setAdminMode: (v: boolean) => void;
-  /** Opens the user manager modal. Used by both the dropdown link and the
-   *  admin-mode quick-add button. */
+
   openUserManager: () => void;
   closeUserManager: () => void;
+
+  openArtistManager: () => void;
+  closeArtistManager: () => void;
 }
 
 const Ctx = createContext<AppCtx | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
+  const [artists, setArtists] = useState<Artist[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [adminMode, setAdminMode] = useState(false);
   const [userManagerOpen, setUserManagerOpen] = useState(false);
+  const [artistManagerOpen, setArtistManagerOpen] = useState(false);
 
   const reloadUsers = useCallback(async () => {
     try {
-      const next = await fetchUsers();
-      setUsers(next);
+      setUsers(await fetchUsers());
     } catch (e) {
       console.warn("[AppProvider] fetchUsers failed", e);
     }
   }, []);
 
-  // First mount: read cookie + hydrate users list.
+  const reloadArtists = useCallback(async () => {
+    try {
+      setArtists(await fetchArtists());
+    } catch (e) {
+      console.warn("[AppProvider] fetchArtists failed", e);
+    }
+  }, []);
+
+  const patchArtistLocal = useCallback(
+    (id: string, patch: Partial<Artist>) => {
+      setArtists((cur) => cur.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+    },
+    []
+  );
+
+  // First mount: hydrate users + artists + cookie.
   useEffect(() => {
     const cookieId = readUserCookie();
     void (async () => {
-      await reloadUsers();
+      await Promise.all([reloadUsers(), reloadArtists()]);
       if (cookieId) setCurrentId(cookieId);
       setReady(true);
     })();
-  }, [reloadUsers]);
+  }, [reloadUsers, reloadArtists]);
 
-  // If cookie pointed at an archived user, clear it once users load.
+  // Clear cookie if it points at an archived user.
   useEffect(() => {
     if (!ready || !currentId) return;
     if (!users.find((u) => u.id === currentId && !u.archived_at)) {
@@ -77,8 +105,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [users, currentId]
   );
 
-  // Auto-exit admin mode if the active user is no longer an admin
-  // (e.g. switched to a non-admin user while in admin mode).
+  // Auto-exit admin mode if active user loses admin.
   useEffect(() => {
     if (adminMode && !currentUser?.is_admin) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -87,7 +114,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [adminMode, currentUser]);
 
   // Keyboard shortcut: Cmd/Ctrl + Shift + A toggles admin mode.
-  // Esc exits admin mode (without closing the modal — modal has its own Esc).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const isAdminShortcut =
@@ -104,33 +130,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return next;
         });
       }
-      if (e.key === "Escape" && adminMode && !userManagerOpen) {
+      if (
+        e.key === "Escape" &&
+        adminMode &&
+        !userManagerOpen &&
+        !artistManagerOpen
+      ) {
         setAdminMode(false);
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [currentUser, adminMode, userManagerOpen]);
+  }, [currentUser, adminMode, userManagerOpen, artistManagerOpen]);
 
   const openUserManager = useCallback(() => setUserManagerOpen(true), []);
   const closeUserManager = useCallback(() => setUserManagerOpen(false), []);
+  const openArtistManager = useCallback(() => setArtistManagerOpen(true), []);
+  const closeArtistManager = useCallback(() => setArtistManagerOpen(false), []);
 
   const value: AppCtx = {
     users,
     currentUser,
     setCurrentUserId,
     reloadUsers,
+    artists,
+    reloadArtists,
+    patchArtistLocal,
     ready,
     adminMode,
     setAdminMode,
     openUserManager,
     closeUserManager,
+    openArtistManager,
+    closeArtistManager,
   };
 
   return (
     <Ctx.Provider value={value}>
       {children}
       {userManagerOpen && <UserManager onClose={closeUserManager} />}
+      {artistManagerOpen && <ArtistManager onClose={closeArtistManager} />}
     </Ctx.Provider>
   );
 }

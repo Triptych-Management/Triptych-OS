@@ -1,4 +1,4 @@
-import type { Task, User } from "./types";
+import type { Artist, Task, User } from "./types";
 
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -47,15 +47,58 @@ export async function archiveUser(id: string): Promise<void> {
   if (!res.ok) throw new Error(await res.text());
 }
 
+// ----- Artists -------------------------------------------------------------
+
+export async function fetchArtists(): Promise<Artist[]> {
+  return asJson<Artist[]>(await fetch("/api/artists", { cache: "no-store" }));
+}
+
+export async function createArtist(input: {
+  name: string;
+  slug?: string;
+}): Promise<Artist> {
+  return asJson<Artist>(
+    await fetch("/api/artists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function updateArtist(
+  id: string,
+  patch: Partial<Pick<Artist, "name" | "slug" | "position" | "notes" | "archived_at">>
+): Promise<Artist> {
+  return asJson<Artist>(
+    await fetch(`/api/artists/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+  );
+}
+
+export async function archiveArtist(id: string): Promise<void> {
+  const res = await fetch(`/api/artists/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 // ----- Tasks ---------------------------------------------------------------
 
-export async function fetchTasks(): Promise<Task[]> {
-  return asJson<Task[]>(await fetch("/api/tasks", { cache: "no-store" }));
+/** Fetch tasks. Pass null/undefined for internal (artist_id IS NULL),
+ *  or a uuid string for tasks scoped to that artist. */
+export async function fetchTasks(artistId?: string | null): Promise<Task[]> {
+  const url = artistId
+    ? `/api/tasks?artist_id=${encodeURIComponent(artistId)}`
+    : "/api/tasks";
+  return asJson<Task[]>(await fetch(url, { cache: "no-store" }));
 }
 
 export async function createTask(input: {
   title: string;
   owner_id: string | null;
+  artist_id?: string | null;
 }): Promise<Task> {
   return asJson<Task>(
     await fetch("/api/tasks", {

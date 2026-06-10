@@ -1,7 +1,7 @@
 // Minimal Database type for the Supabase client. supabase-js infers `never`
 // for from()/insert() unless a Database generic is provided.
 
-import type { Task, User } from "./types";
+import type { Artist, Task, User } from "./types";
 
 type DbTable<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
   Row: Row;
@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       tasks: DbTable<Task>;
       users: DbTable<User>;
+      artists: DbTable<Artist>;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

@@ -11,9 +11,15 @@ import { POLL_INTERVAL_MS, UNDO_WINDOW_MS } from "./constants";
 import { toast } from "./toast";
 import type { Task } from "./types";
 
+interface UseTasksOptions {
+  /** undefined or null = internal tasks (artist_id IS NULL).
+   *  A string id = tasks for that artist. */
+  artistId?: string | null;
+}
+
 // Single-list task state. Add, toggle, edit, soft-delete-with-undo. Polls
 // every 5s when the tab is visible and no mutation is in flight.
-export function useTasks() {
+export function useTasks({ artistId }: UseTasksOptions = {}) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,23 +28,26 @@ export function useTasks() {
   const commitTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const inflight = useRef(0);
 
+  const scopeKey = artistId ?? null;
+
   const refetch = useCallback(async () => {
     if (inflight.current > 0) return;
     try {
-      const next = await fetchTasks();
+      const next = await fetchTasks(scopeKey);
       setTasks(next);
     } catch (e) {
-      // Silent on poll errors — surface only on user-driven failures.
       console.warn("[useTasks] refetch failed", e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scopeKey]);
 
-  // Initial load + polling. The lint rule fires because refetch() ultimately
-  // setState's — but fetch-on-mount is the whole point.
+  // Initial load + polling. Resets if scope changes. The setState calls here
+  // are the whole purpose of the effect (re-fetch on mount / on poll); the
+  // general lint rule doesn't fit this case.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
     void refetch();
     const id = setInterval(() => {
       if (document.visibilityState === "visible") void refetch();
@@ -46,19 +55,26 @@ export function useTasks() {
     return () => clearInterval(id);
   }, [refetch]);
 
-  const add = useCallback(async (title: string, owner_id: string | null) => {
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    inflight.current++;
-    try {
-      const created = await createTask({ title: trimmed, owner_id });
-      setTasks((prev) => [created, ...prev]);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      inflight.current--;
-    }
-  }, []);
+  const add = useCallback(
+    async (title: string, owner_id: string | null) => {
+      const trimmed = title.trim();
+      if (!trimmed) return;
+      inflight.current++;
+      try {
+        const created = await createTask({
+          title: trimmed,
+          owner_id,
+          artist_id: scopeKey,
+        });
+        setTasks((prev) => [created, ...prev]);
+      } catch (e) {
+        toast.error((e as Error).message);
+      } finally {
+        inflight.current--;
+      }
+    },
+    [scopeKey]
+  );
 
   const toggle = useCallback(async (id: string) => {
     let prev: Task | undefined;
@@ -136,10 +152,6 @@ export function useTasks() {
     }
   }, []);
 
-  // Soft-delete with undo:
-  // 1. Stash task in pendingDeletes (hides it from UI)
-  // 2. Schedule a 4s commit timer
-  // 3. Show toast with UNDO action that cancels the timer and restores
   const remove = useCallback(
     (id: string) => {
       const task = tasks.find((t) => t.id === id);
@@ -172,7 +184,6 @@ export function useTasks() {
           setTasks((cur) => cur.filter((t) => t.id !== id));
         } catch (e) {
           toast.error((e as Error).message);
-          // Restore so the user sees the failure.
           undo();
         } finally {
           inflight.current--;
@@ -196,7 +207,6 @@ export function useTasks() {
     [tasks]
   );
 
-  // Visible = tasks - pendingDeletes.
   const visible = tasks.filter((t) => !pendingDeletes.has(t.id));
 
   return {

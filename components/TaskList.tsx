@@ -8,10 +8,15 @@ import { TaskRow } from "./TaskRow";
 
 type Filter = "all" | "mine" | "done";
 
-export function TaskList() {
+interface Props {
+  /** undefined/null = internal tasks. A string uuid = artist-scoped tasks. */
+  artistId?: string | null;
+}
+
+export function TaskList({ artistId }: Props = {}) {
   const { users, currentUser } = useApp();
   const { tasks, loading, add, toggle, updateTitle, updateOwner, remove } =
-    useTasks();
+    useTasks({ artistId });
   const [filter, setFilter] = useState<Filter>("all");
 
   const userById = useMemo(() => {
