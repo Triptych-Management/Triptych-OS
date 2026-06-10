@@ -67,8 +67,11 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    console.error("[api/tasks] POST error:", error);
-    return jsonError(error.message, 500);
+    console.error("[api/tasks] POST error:", JSON.stringify(error));
+    const detail = [error.message, error.details, error.hint, error.code]
+      .filter(Boolean)
+      .join(" · ");
+    return jsonError(detail || "Insert failed", 500);
   }
   return NextResponse.json(data);
 }
