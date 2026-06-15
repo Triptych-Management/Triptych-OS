@@ -1,4 +1,12 @@
-import type { Artist, Client, Task, User } from "./types";
+import type {
+  Artist,
+  Client,
+  FundraiseConfig,
+  Investor,
+  InvestorStatus,
+  Task,
+  User,
+} from "./types";
 
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -182,4 +190,58 @@ export async function patchTask(
 export async function deleteTask(id: string): Promise<void> {
   const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
+}
+
+// ----- Investors / Fundraise ----------------------------------------------
+
+export async function fetchInvestors(): Promise<Investor[]> {
+  return asJson<Investor[]>(await fetch("/api/investors", { cache: "no-store" }));
+}
+
+export async function createInvestor(input: {
+  name: string;
+  amount?: number;
+  status?: InvestorStatus;
+}): Promise<Investor> {
+  return asJson<Investor>(
+    await fetch("/api/investors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  );
+}
+
+export async function updateInvestor(
+  id: string,
+  patch: Partial<Pick<Investor, "name" | "amount" | "status" | "position">>
+): Promise<Investor> {
+  return asJson<Investor>(
+    await fetch(`/api/investors/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+  );
+}
+
+export async function archiveInvestor(id: string): Promise<void> {
+  const res = await fetch(`/api/investors/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function fetchFundraiseConfig(): Promise<FundraiseConfig> {
+  return asJson<FundraiseConfig>(
+    await fetch("/api/fundraise-config", { cache: "no-store" })
+  );
+}
+
+export async function updateFundraiseTarget(target_amount: number): Promise<FundraiseConfig> {
+  return asJson<FundraiseConfig>(
+    await fetch("/api/fundraise-config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_amount }),
+    })
+  );
 }

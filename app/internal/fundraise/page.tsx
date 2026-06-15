@@ -1,10 +1,5 @@
-import { Placeholder } from "@/components/Placeholder";
+import { FundraiseDashboard } from "@/components/FundraiseDashboard";
 
 export default function FundraisePage() {
-  return (
-    <Placeholder
-      title="Fundraise"
-      hint="Pre-seed SAFE round tracker will live here. Investor pipeline, last contact, status."
-    />
-  );
+  return <FundraiseDashboard />;
 }

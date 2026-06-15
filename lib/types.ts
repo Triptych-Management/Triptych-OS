@@ -49,3 +49,27 @@ export interface Task {
   created_at: string;
   updated_at?: string | null;
 }
+
+export type InvestorStatus =
+  | "Conversation"
+  | "Interested"
+  | "SAFE Sent"
+  | "Signed"
+  | "On Carta"
+  | "Wired";
+
+export interface Investor {
+  id: string;
+  name: string;
+  amount: number;
+  status: InvestorStatus;
+  position: number;
+  created_at: string;
+  archived_at: string | null;
+}
+
+export interface FundraiseConfig {
+  id: number;
+  target_amount: number;
+  updated_at: string;
+}
