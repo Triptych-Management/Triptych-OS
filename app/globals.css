@@ -438,8 +438,46 @@ input::placeholder, textarea::placeholder {
 .tri-icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ============================================================================
-   Fundraise — progress bar + investor list
+   Fundraise — gate, progress bar, investor list
    ============================================================================ */
+
+.tri-fundraise-gate {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+.tri-fundraise-gate-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 420px;
+  width: 100%;
+  padding: 28px;
+  background: var(--tri-surface);
+  border: 1px solid var(--tri-border-soft);
+  border-radius: var(--tri-radius);
+}
+.tri-fundraise-gate-input {
+  width: 100%;
+}
+.tri-fundraise-gate-submit {
+  align-self: stretch;
+}
+.tri-fundraise-gate-error {
+  font-family: var(--font-instrument), Georgia, serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--tri-error);
+}
+
+.tri-investor-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 
 .tri-fundraise { display: flex; flex-direction: column; gap: 28px; }
 

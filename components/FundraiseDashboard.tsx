@@ -4,9 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchFundraiseConfig } from "@/lib/api-client";
 import { canViewFundraise } from "@/lib/auth";
 import { COMMITTED_STATUSES, POLL_INTERVAL_MS, WIRED_STATUSES } from "@/lib/constants";
+import { useFundraiseGate } from "@/lib/useFundraiseGate";
 import { useInvestors } from "@/lib/useInvestors";
 import type { FundraiseConfig } from "@/lib/types";
 import { useApp } from "./AppProvider";
+import { FundraiseGate } from "./FundraiseGate";
 import { FundraiseProgressBar } from "./FundraiseProgressBar";
 import { InvestorInput } from "./InvestorInput";
 import { InvestorRow } from "./InvestorRow";
@@ -15,11 +17,9 @@ export function FundraiseDashboard() {
   const { currentUser, ready } = useApp();
   const authorized = canViewFundraise(currentUser);
 
-  return ready
-    ? authorized
-      ? <FundraiseDashboardInner />
-      : <FundraiseRestricted />
-    : <div className="tri-empty">Loading…</div>;
+  if (!ready) return <div className="tri-empty">Loading…</div>;
+  if (!authorized) return <FundraiseRestricted />;
+  return <FundraiseGated />;
 }
 
 function FundraiseRestricted() {
@@ -35,7 +35,16 @@ function FundraiseRestricted() {
   );
 }
 
-function FundraiseDashboardInner() {
+// Second gate: password prompt on top of the admin/name check. Renders the
+// dashboard once the cookie is present.
+function FundraiseGated() {
+  const { checking, authed, markUnlocked, lock } = useFundraiseGate();
+  if (checking) return <div className="tri-empty">Loading…</div>;
+  if (!authed) return <FundraiseGate onUnlock={markUnlocked} />;
+  return <FundraiseDashboardInner onLock={lock} />;
+}
+
+function FundraiseDashboardInner({ onLock }: { onLock: () => Promise<void> }) {
   const { investors, loading, add, updateName, updateAmount, updateStatus, remove } =
     useInvestors();
 
@@ -79,7 +88,17 @@ function FundraiseDashboardInner() {
       />
 
       <section className="tri-investor-list-section" aria-label="Investors">
-        <h2 className="tri-section-label">Investors</h2>
+        <div className="tri-investor-list-head">
+          <h2 className="tri-section-label">Investors</h2>
+          <button
+            type="button"
+            className="tri-link"
+            onClick={() => void onLock()}
+            title="Re-lock Fundraise on this browser"
+          >
+            Lock
+          </button>
+        </div>
         <InvestorInput onAdd={add} />
         {loading ? (
           <div className="tri-empty">Loading…</div>
