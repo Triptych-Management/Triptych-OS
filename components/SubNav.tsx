@@ -3,12 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { INTERNAL_TABS } from "@/lib/constants";
+import { canViewFundraise } from "@/lib/auth";
+import { useApp } from "./AppProvider";
 
 export function SubNav() {
   const pathname = usePathname() ?? "";
+  const { currentUser } = useApp();
+
+  const visibleTabs = INTERNAL_TABS.filter((t) => {
+    if (t.id === "fundraise") return canViewFundraise(currentUser);
+    return true;
+  });
+
   return (
     <nav className="tri-subnav" aria-label="Internal sub-sections">
-      {INTERNAL_TABS.map((t) => {
+      {visibleTabs.map((t) => {
         const active = pathname === t.href;
         return (
           <Link

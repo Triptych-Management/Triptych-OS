@@ -2,14 +2,40 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchFundraiseConfig } from "@/lib/api-client";
+import { canViewFundraise } from "@/lib/auth";
 import { COMMITTED_STATUSES, POLL_INTERVAL_MS, WIRED_STATUSES } from "@/lib/constants";
 import { useInvestors } from "@/lib/useInvestors";
 import type { FundraiseConfig } from "@/lib/types";
+import { useApp } from "./AppProvider";
 import { FundraiseProgressBar } from "./FundraiseProgressBar";
 import { InvestorInput } from "./InvestorInput";
 import { InvestorRow } from "./InvestorRow";
 
 export function FundraiseDashboard() {
+  const { currentUser, ready } = useApp();
+  const authorized = canViewFundraise(currentUser);
+
+  return ready
+    ? authorized
+      ? <FundraiseDashboardInner />
+      : <FundraiseRestricted />
+    : <div className="tri-empty">Loading…</div>;
+}
+
+function FundraiseRestricted() {
+  return (
+    <div className="tri-placeholder">
+      <span className="tri-placeholder-eyebrow">Restricted</span>
+      <h1 className="tri-placeholder-title">Fundraise</h1>
+      <p className="tri-placeholder-hint">
+        This section is limited to specific admins. Switch users from the top
+        right if you have access.
+      </p>
+    </div>
+  );
+}
+
+function FundraiseDashboardInner() {
   const { investors, loading, add, updateName, updateAmount, updateStatus, remove } =
     useInvestors();
 
